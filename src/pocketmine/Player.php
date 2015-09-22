@@ -1574,7 +1574,7 @@ class Player extends Human implements CommandSender, InventoryHolder, ChunkLoade
 //								return false;
 //							}
 //						}
-//					}
+					}
 
 					++$this->inAirTicks;
 				}
