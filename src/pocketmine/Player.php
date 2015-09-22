@@ -1365,6 +1365,12 @@ class Player extends Human implements CommandSender, InventoryHolder, ChunkLoade
 			}
 		}
 	}
+        
+        protected $foodTick = 0;
+
+        protected $starvationTick = 0;
+
+        protected $foodUsageTime = 0;
 
 	protected function processMovement($tickDiff){
 		if(!$this->isAlive() or !$this->spawned or $this->newPosition === null or $this->teleportPosition !== null){
@@ -1460,10 +1466,46 @@ class Player extends Human implements CommandSender, InventoryHolder, ChunkLoade
 
 				if(!($revert = $ev->isCancelled())){ //Yes, this is intended
 					if($to->distanceSquared($ev->getTo()) > 0.01){ //If plugins modify the destination
-						$this->teleport($ev->getTo());
+						$this->teleport($ev->getTo());                                                
 					}else{
 						$this->level->addEntityMovement($this->x >> 4, $this->z >> 4, $this->getId(), $this->x, $this->y + $this->getEyeHeight(), $this->z, $this->yaw, $this->pitch, $this->yaw);
 					}
+                                        
+                                        if($this->foodEnabled) {
+                                            if($this->starvationTick >= 20) {
+                                                $ev = new EntityDamageEvent($this, EntityDamageEvent::CAUSE_CUSTOM, 1);
+                                                $this->attack(1, $ev);
+                                                $this->starvationTick = 0;
+                                            }
+                                            if($this->getFood() <= 0) {
+                                                $this->starvationTick++;
+                                            }
+                                            if($this->isSprinting()) {
+                                                $this->foodUsageTime += 500;
+                                            } else {
+                                                $this->foodUsageTime += 250;
+                                            }
+                                            if($this->foodUsageTime >= 100000 && $this->foodEnabled) {
+                                                $this->foodUsageTime -= 100000;
+                                                $this->subtractFood(1);
+                                            }
+                                            if($this->foodTick >= 80) {
+                                                if($this->getHealth() < $this->getMaxHealth() && $this->getFood() >= 18) {
+                                                    $ev = new EntityRegainHealthEvent($this, 1, EntityRegainHealthEvent::CAUSE_EATING);
+                                                    $this->heal(1, $ev);
+                                                    if($this->foodDepletion >=2) {
+                                                        $this->subtractFood(1);
+                                                        $this->foodDepletion = 0;
+                                                    } else {
+                                                        $this->foodDepletion++;
+                                                    }
+                                                }
+                                                $this->foodTick = 0;
+                                            }
+                                            if($this->getHealth() < $this->getMaxHealth()) {
+                                                $this->foodTick++;
+                                            }
+                                        }
 				}
 			}
 
@@ -1518,12 +1560,6 @@ class Player extends Human implements CommandSender, InventoryHolder, ChunkLoade
 	protected function updateMovement(){
 
 	}
-
-    protected $foodTick = 0;
-
-    protected $starvationTick = 0;
-
-    protected $foodUsageTime = 0;
 
 	public function onUpdate($currentTick){
 		if(!$this->loggedIn){
@@ -1584,43 +1620,6 @@ class Player extends Human implements CommandSender, InventoryHolder, ChunkLoade
 		$this->checkTeleportPosition();
 
 		$this->timings->stopTiming();
-
-        if($this->starvationTick >= 20) {
-            $ev = new EntityDamageEvent($this, EntityDamageEvent::CAUSE_CUSTOM, 1);
-            $this->attack(1, $ev);
-            $this->starvationTick = 0;
-        }
-        if($this->getFood() <= 0) {
-            $this->starvationTick++;
-        }
-
-        if($this->isSprinting()) {
-            $this->foodUsageTime += 500;
-        } else {
-            $this->foodUsageTime += 250;
-        }
-
-        if($this->foodUsageTime >= 100000 && $this->foodEnabled) {
-            $this->foodUsageTime -= 100000;
-            $this->subtractFood(1);
-        }
-
-        if($this->foodTick >= 80) {
-            if($this->getHealth() < $this->getMaxHealth() && $this->getFood() >= 18) {
-                $ev = new EntityRegainHealthEvent($this, 1, EntityRegainHealthEvent::CAUSE_EATING);
-                $this->heal(1, $ev);
-                if($this->foodDepletion >=2) {
-                    $this->subtractFood(1);
-                    $this->foodDepletion = 0;
-                } else {
-                    $this->foodDepletion++;
-                }
-            }
-            $this->foodTick = 0;
-        }
-        if($this->getHealth() < $this->getMaxHealth()) {
-            $this->foodTick++;
-        }
 
 		return true;
 	}
@@ -2371,12 +2370,12 @@ class Player extends Human implements CommandSender, InventoryHolder, ChunkLoade
 						$this->noDamageTicks = 60;
 
 						$this->setHealth($this->getMaxHealth());
-                        $this->setFood(20);
-                        $this->getAttribute()->resetAll();
-                        $this->starvationTick = 0;
-                        $this->foodTick = 0;
-                        $this->lastSentVitals = 10;
-                        $this->foodUsageTime = 0;
+                                                $this->setFood(20);
+                                                $this->getAttribute()->resetAll();
+                                                $this->starvationTick = 0;
+                                                $this->foodTick = 0;
+                                                $this->lastSentVitals = 10;
+                                                $this->foodUsageTime = 0;
 
 						$this->removeAllEffects();
 						$this->sendData($this);
@@ -3377,12 +3376,16 @@ class Player extends Human implements CommandSender, InventoryHolder, ChunkLoade
 
     protected $foodEnabled = true;
 
-    public function setFoodEnabled($enabled) {
-        $this->foodEnabled = $enabled;
+    public function enableFood() {
+        $this->foodEnabled = true;
     }
-
-    public function getFoodEnabled() {
+    
+    public function isFoodEnabled() {
         return $this->foodEnabled;
+    }
+    
+    public function disableFood() {
+       $this->foodEnabled = false;
     }
 
     public function setFood($amount){
